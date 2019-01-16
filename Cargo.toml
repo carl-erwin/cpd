@@ -1,0 +1,9 @@
+[package]
+name = "cpd"
+version = "0.1.0"
+authors = ["Carl-Erwin Griffith <carl.erwin@gmail.com>"]
+
+[dependencies]
+num_cpus = "*"
+crc = "*"
+clap = "*"
