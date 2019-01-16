@@ -304,8 +304,7 @@ fn walk_graph(
             // get next line hash
             let next_hash = finfo.lines[next_li].hash;
 
-            if hash_graph.contains_key(&next_hash) {
-                let lines = hash_graph.get(&next_hash).unwrap();
+            if let Some(lines) = hash_graph.get(&next_hash) {
                 if lines.len() > 1 {
                     // at least 2 lines
                     next_lines.push((next_hash, e.1, next_li as u32));
