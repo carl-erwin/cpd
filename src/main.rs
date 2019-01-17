@@ -27,10 +27,12 @@
 // This is a simple text "parser" that looks for "almost" common ranges of lines.
 // It only support ascii/utf8 files.
 
+extern crate byteorder;
 extern crate clap;
 extern crate crc;
 extern crate num_cpus;
 
+use byteorder::{BigEndian, WriteBytesExt};
 use clap::{App, Arg};
 
 use crc::{crc64, Hasher64};
@@ -42,6 +44,7 @@ use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::io::BufWriter;
+use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -348,13 +351,14 @@ fn walk_graph(
                 let (fi, li) = (e.1 as usize, e.2 as usize);
                 let finfo = &files_inf[fi];
 
+                let mut bytes =
+                    Vec::with_capacity((window_size as usize) * mem::size_of::<CpdHash>());
                 for i in 0..(window_size as usize) {
                     let h = finfo.lines[i + (li + 1) - (window_size as usize)].hash;
-                    use std::mem::transmute;
-                    let bytes: [u8; 8] = unsafe { transmute(h.to_be()) };
-                    window_digest.write(&bytes);
+                    bytes.write_u64::<BigEndian>(h).unwrap();
                 }
 
+                window_digest.write(&bytes);
                 window_digest.sum64()
             };
 
