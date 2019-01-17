@@ -665,50 +665,6 @@ fn print_results(files_inf: &RwLock<Vec<FileInfo>>, results: &RwLock<CpdResults>
     }
 }
 
-fn main() {
-    let config = parse_command_line();
-
-    // dedup files
-    let mut args: Vec<String> = config.files;
-    let set: HashSet<_> = args.drain(..).collect();
-    args.extend(set.into_iter());
-
-    // sort files list
-    args.sort();
-
-    let results = Arc::new(RwLock::new(CpdResults::new()));
-
-    // prepare file slots
-    let mut v = Vec::<FileInfo>::with_capacity(args.len());
-    for (i, item) in args.iter().enumerate() {
-        v.push(FileInfo {
-            file_index: i,
-            filename: item.clone(),
-            lines: Vec::new(),
-        });
-    }
-    let files_inf = Arc::new(RwLock::new(v));
-
-    let (hash_vec, hash_graph) = parse_files(config.nr_threads, args.len(), &files_inf);
-
-    let hash_vec =
-        filter_commom_starting_point(config.nr_threads, hash_vec, &files_inf, &hash_graph);
-
-    parse_graph(
-        config.nr_threads,
-        config.stack_size,
-        &hash_graph,
-        hash_vec,
-        &files_inf,
-        &results,
-        config.min_window_size,
-    );
-
-    if config.print_results {
-        print_results(&files_inf, &results);
-    }
-}
-
 fn read_file(filename: &str) -> Vec<String> {
     let mut v = Vec::new();
     let file = File::open(filename);
@@ -835,5 +791,49 @@ fn parse_command_line() -> Config {
         min_window_size,
         stack_size,
         print_results,
+    }
+}
+
+fn main() {
+    let config = parse_command_line();
+
+    // dedup files
+    let mut args: Vec<String> = config.files;
+    let set: HashSet<_> = args.drain(..).collect();
+    args.extend(set.into_iter());
+
+    // sort files list
+    args.sort();
+
+    let results = Arc::new(RwLock::new(CpdResults::new()));
+
+    // prepare file slots
+    let mut v = Vec::<FileInfo>::with_capacity(args.len());
+    for (i, item) in args.iter().enumerate() {
+        v.push(FileInfo {
+            file_index: i,
+            filename: item.clone(),
+            lines: Vec::new(),
+        });
+    }
+    let files_inf = Arc::new(RwLock::new(v));
+
+    let (hash_vec, hash_graph) = parse_files(config.nr_threads, args.len(), &files_inf);
+
+    let hash_vec =
+        filter_commom_starting_point(config.nr_threads, hash_vec, &files_inf, &hash_graph);
+
+    parse_graph(
+        config.nr_threads,
+        config.stack_size,
+        &hash_graph,
+        hash_vec,
+        &files_inf,
+        &results,
+        config.min_window_size,
+    );
+
+    if config.print_results {
+        print_results(&files_inf, &results);
     }
 }
