@@ -798,9 +798,8 @@ fn main() {
     let config = parse_command_line();
 
     // dedup files
-    let mut args: Vec<String> = config.files;
-    let set: HashSet<_> = args.drain(..).collect();
-    args.extend(set.into_iter());
+    let set: HashSet<String> = config.files.into_iter().collect();
+    let mut args: Vec<String> = set.into_iter().collect();
 
     // sort files list
     args.sort();
