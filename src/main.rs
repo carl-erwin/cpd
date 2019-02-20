@@ -185,9 +185,6 @@ fn parse_files(
     file_max: usize,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
 ) -> (Vec<CpdHash>, Arc<RwLock<CrcFileLineMap>>) {
-    // hash_graph: HashMap<CpdHash, HashSet<(u32, u32)>>
-    let hash_graph = Arc::new(RwLock::new(HashMap::new()));
-
     let mut graph_vec = Vec::new();
     for _ in 0..n_jobs {
         graph_vec.push(Arc::new(Mutex::new(CrcFileLineMap::new())));
@@ -231,14 +228,27 @@ fn parse_files(
 
     eprintln!("");
 
+    // merge results
+    eprintln!("merge results");
+    let mut merge_map = CrcFileLineMap::new();
+
+    for map in Arc::try_unwrap(graph_vec).unwrap() {
+        let mut map = Arc::try_unwrap(map).unwrap();
+        let mut map = map.lock().unwrap();
+        for (k, v) in &*map {
+            for e in v {
+                merge_map.entry(*k).or_insert_with(HashSet::new).insert(*e);
+            }
+        }
+    }
+
     // keys to vec
     let mut hash_vec = Vec::<CpdHash>::new();
     {
-        let hash_graph = hash_graph.read().unwrap();
-        hash_vec.extend((*hash_graph).keys());
+        hash_vec.extend(merge_map.keys());
     }
 
-    (hash_vec, hash_graph)
+    (hash_vec, Arc::new(RwLock::new(merge_map)))
 }
 
 /// This function prints a specific range of line, for a given file
