@@ -46,7 +46,7 @@ use std::io::BufReader;
 use std::io::BufWriter;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 const DEFAULT_MIN_WINDOW_SIZE: usize = 3;
@@ -91,8 +91,10 @@ struct FileInfo {
     lines: Vec<LineInfo>,
 }
 
+type CrcFileLineMap = HashMap<CpdHash, HashSet<(FileIndex, LineIndex)>>;
+
 struct CpdResults {
-    window_to_files_range: HashMap<CpdHash, HashSet<(FileIndex, LineIndex)>>,
+    window_to_files_range: CrcFileLineMap,
     window_size_map: HashMap<u32, HashSet<CpdHash>>,
 }
 
@@ -114,7 +116,7 @@ impl CpdResults {
 fn parse_file(
     filename: &str,
     file_index: usize,
-    map: &RwLock<HashMap<CpdHash, HashSet<(FileIndex, LineIndex)>>>,
+    map: &mut CrcFileLineMap,
 ) -> Option<Vec<LineInfo>> {
     let file = File::open(filename);
     let file = match file {
@@ -168,9 +170,7 @@ fn parse_file(
         line_info.push(LineInfo::new(line_number + 1, hash));
 
         // insert (file_index , line_index) pair in global table
-        map.write()
-            .unwrap()
-            .entry(hash)
+        map.entry(hash)
             .or_insert_with(HashSet::new)
             .insert((file_index, line_index));
     }
@@ -184,26 +184,31 @@ fn parse_files(
     n_jobs: usize,
     file_max: usize,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
-) -> (
-    Vec<CpdHash>,
-    Arc<RwLock<HashMap<CpdHash, HashSet<(FileIndex, LineIndex)>>>>,
-) {
+) -> (Vec<CpdHash>, Arc<RwLock<CrcFileLineMap>>) {
     // hash_graph: HashMap<CpdHash, HashSet<(u32, u32)>>
     let hash_graph = Arc::new(RwLock::new(HashMap::new()));
+
+    let mut graph_vec = Vec::new();
+    for _ in 0..n_jobs {
+        graph_vec.push(Arc::new(Mutex::new(CrcFileLineMap::new())));
+    }
+    let graph_vec = Arc::new(graph_vec);
 
     let mut handles = vec![];
     let idx = Arc::new(AtomicUsize::new(0));
 
-    for _ in 0..n_jobs {
+    for thread_idx in 0..n_jobs {
         let files_inf = Arc::clone(&files_inf);
         let idx = Arc::clone(&idx);
-        let hash_graph = Arc::clone(&hash_graph);
+        let graph_vec = Arc::clone(&graph_vec);
 
         let handle = thread::spawn(move || loop {
             let i = idx.fetch_add(1, Ordering::SeqCst);
             if i >= file_max {
                 return;
             }
+
+            let mut hash_graph = graph_vec[thread_idx].lock().unwrap();
 
             let filename = {
                 let mut vec = files_inf.read().unwrap();
@@ -212,7 +217,7 @@ fn parse_files(
 
             eprint!("\rparse files : {}/{}               ", i + 1, file_max);
 
-            if let Some(lines) = parse_file(&filename, i, &hash_graph) {
+            if let Some(lines) = parse_file(&filename, i, &mut hash_graph) {
                 let mut vec = files_inf.write().unwrap();
                 vec[i].lines = lines;
             }
@@ -466,7 +471,7 @@ fn filter_commom_starting_point(
     n_jobs: usize,
     hash_vec: Vec<CpdHash>,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
-    hash_graph: &Arc<RwLock<HashMap<CpdHash, HashSet<(FileIndex, LineIndex)>>>>,
+    hash_graph: &Arc<RwLock<CrcFileLineMap>>,
 ) -> Vec<CpdHash> {
     let nr_hash = hash_vec.len();
 
@@ -539,7 +544,7 @@ fn filter_commom_starting_point(
 fn parse_graph(
     n_jobs: usize,
     stack_size: usize,
-    hash_graph: &Arc<RwLock<HashMap<CpdHash, HashSet<(FileIndex, LineIndex)>>>>,
+    hash_graph: &Arc<RwLock<CrcFileLineMap>>,
     hash_vec: Vec<CpdHash>,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
     results: &Arc<RwLock<CpdResults>>,
