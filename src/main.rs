@@ -257,7 +257,7 @@ fn print_file_lines(filename: &str, start_line: usize, end_line: usize) {
     }
 }
 
-/// This (recursive) function compares the consecutives crcs to detect the cut/past code.
+/// This (recursive) function compares the consecutives crcs to detect the cut/paste code.
 /// for a given starting crc there is a list/array of (file_index,line_index) tuples.
 /// We check all (file_index, line_index + 1).
 /// If they all point to the same crc we loop  (cut/paste detected).
