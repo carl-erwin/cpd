@@ -737,7 +737,7 @@ fn parse_command_line() -> Config {
 
     let nr_threads = if matches.is_present("THREAD") {
         let nr_threads = matches.values_of("THREAD").unwrap().collect::<String>();
-        nr_threads.trim_right().parse::<usize>().unwrap_or(1)
+        nr_threads.trim_end().parse::<usize>().unwrap_or(1)
     } else {
         num_cpus::get()
     };
@@ -747,7 +747,7 @@ fn parse_command_line() -> Config {
     let stack_size = if matches.is_present("STACK_SIZE") {
         let stack_size = matches.values_of("STACK_SIZE").unwrap().collect::<String>();
         stack_size
-            .trim_right()
+            .trim_end()
             .parse::<usize>()
             .unwrap_or(64 * 1024 * 1024)
     } else {
@@ -759,7 +759,7 @@ fn parse_command_line() -> Config {
     let min_window_size = if matches.is_present("WINDOW") {
         let min_window_size = matches.values_of("WINDOW").unwrap().collect::<String>();
         min_window_size
-            .trim_right()
+            .trim_end()
             .parse::<usize>()
             .unwrap_or(DEFAULT_MIN_WINDOW_SIZE)
     } else {
