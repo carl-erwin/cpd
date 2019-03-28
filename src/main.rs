@@ -48,6 +48,10 @@ use std::thread;
 
 const DEFAULT_MIN_WINDOW_SIZE: usize = 3;
 
+const DEFAULT_STACK_SIZE: usize = 64 * 1024 * 1024;
+const MIN_STACK_SIZE: usize = 2 * 4096;
+
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct Config {
@@ -744,12 +748,12 @@ fn parse_command_line() -> Config {
         stack_size
             .trim_end()
             .parse::<usize>()
-            .unwrap_or(64 * 1024 * 1024)
+            .unwrap_or(DEFAULT_STACK_SIZE)
     } else {
-        64 * 1024 * 1024
+        DEFAULT_STACK_SIZE
     };
 
-    let stack_size = ::std::cmp::max(8192, stack_size);
+    let stack_size = ::std::cmp::max(MIN_STACK_SIZE, stack_size);
 
     let min_window_size = if matches.is_present("WINDOW") {
         let min_window_size = matches.values_of("WINDOW").unwrap().collect::<String>();
