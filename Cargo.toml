@@ -7,4 +7,3 @@ authors = ["Carl-Erwin Griffith <carl.erwin@gmail.com>"]
 num_cpus = "*"
 crc = "*"
 clap = "*"
-byteorder = "*"
