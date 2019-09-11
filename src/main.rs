@@ -51,7 +51,6 @@ const DEFAULT_MIN_WINDOW_SIZE: usize = 3;
 const DEFAULT_STACK_SIZE: usize = 64 * 1024 * 1024;
 const MIN_STACK_SIZE: usize = 2 * 4096;
 
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct Config {
@@ -207,7 +206,7 @@ fn parse_files(
             }
 
             let filename = {
-                let mut vec = files_inf.read().unwrap();
+                let vec = files_inf.read().unwrap();
                 vec[i].filename.clone()
             };
 
