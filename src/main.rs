@@ -147,7 +147,7 @@ fn parse_file(
         for c in l.into_bytes() {
             let sl: [u8; 1] = [c];
             match sl[0] {
-                0x20 | 0x9 | 0xa | 0xd => {}
+                b'\0' ..= b' ' | b'{' | b'}' | b'(' | b')' => {}
                 _ => {
                     slen += 1;
                     digest.write(&sl);
@@ -645,6 +645,7 @@ fn print_results(files_inf: &RwLock<Vec<FileInfo>>, results: &RwLock<CpdResults>
                     }
                 });
 
+                println!("number of files : {}", v.len());
                 for (index, (fi, li)) in v.iter().enumerate() {
                     let finfo = &files_inf[*fi];
                     let l_start = finfo.lines[*li].line_number;
