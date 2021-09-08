@@ -5,5 +5,5 @@ authors = ["Carl-Erwin Griffith <carl.erwin@gmail.com>"]
 
 [dependencies]
 num_cpus = "*"
-crc = "*"
-clap = "*"
+crc = "1.8.*"
+clap = "2.33.*"

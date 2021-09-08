@@ -147,7 +147,7 @@ fn parse_file(
         for c in l.into_bytes() {
             let sl: [u8; 1] = [c];
             match sl[0] {
-                b'\0' ..= b' ' | b'{' | b'}' | b'(' | b')' => {}
+                b'\0'..=b' ' | b'{' | b'}' | b'(' | b')' => {}
                 _ => {
                     slen += 1;
                     digest.write(&sl);
