@@ -460,7 +460,7 @@ fn get_first_common_line(
     }
 }
 
-fn filter_commom_starting_point(
+fn filter_common_starting_point(
     n_jobs: usize,
     hash_vec: Vec<CpdHash>,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
@@ -819,7 +819,7 @@ fn main() {
     let (hash_vec, hash_graph) = parse_files(config.nr_threads, args.len(), &files_inf);
 
     let hash_vec =
-        filter_commom_starting_point(config.nr_threads, hash_vec, &files_inf, &hash_graph);
+        filter_common_starting_point(config.nr_threads, hash_vec, &files_inf, &hash_graph);
 
     parse_graph(
         config.nr_threads,
