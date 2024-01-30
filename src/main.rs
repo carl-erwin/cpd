@@ -30,6 +30,9 @@
 extern crate clap;
 extern crate crc;
 extern crate num_cpus;
+extern crate walkdir;
+
+use walkdir::WalkDir;
 
 use clap::{App, Arg};
 
@@ -86,7 +89,7 @@ impl LineInfo {
 
 #[derive(Debug)]
 struct FileInfo {
-    file_index: usize,
+    //file_index: usize,
     filename: String,
     lines: Vec<LineInfo>,
 }
@@ -119,8 +122,8 @@ fn parse_file(
     let file = File::open(filename);
     let file = match file {
         Ok(file) => file,
-        _ => {
-            eprintln!("cannot parse {}", filename);
+        Err(e) => {
+            eprintln!("cannot parse {}, {:?}", filename, e);
             return None;
         }
     };
@@ -727,6 +730,15 @@ fn parse_command_line() -> Config {
                 .help("do not print results"),
         )
         .arg(
+            Arg::with_name("DIRS")
+                .short("d")
+                .long("--dir")
+                .help("list of directories to scan")
+                .takes_value(true)
+                .required(false)
+                .multiple(true),
+        )
+        .arg(
             Arg::with_name("FILES")
                 .help("list of the files to scan")
                 .required(false)
@@ -782,6 +794,37 @@ fn parse_command_line() -> Config {
         files.extend(list);
     }
 
+    if matches.is_present("DIRS") {
+        let list: Vec<String> = matches
+            .values_of("DIRS")
+            .unwrap()
+            .map(|x| x.to_owned())
+            .collect();
+
+        for d in list {
+            println!("scanning {}", d);
+
+            for entry in WalkDir::new(d) {
+                let entry = entry.unwrap();
+
+                if entry.path_is_symlink() {
+                    //println!("ignore symlink {}", entry.path().display());
+                    continue;
+                }
+
+                if entry.metadata().unwrap().is_dir() {
+                    //println!("ignore subdir {}", entry.path().display());
+                    continue;
+                }
+
+                let path = entry.into_path();
+                files.push(path.as_os_str().to_str().unwrap().to_owned());
+
+                //                println!("{}", entry.path().display());
+            }
+        }
+    }
+
     let print_results = !matches.is_present("PR");
 
     Config {
@@ -807,9 +850,9 @@ fn main() {
 
     // prepare file slots
     let mut v = Vec::<FileInfo>::with_capacity(args.len());
-    for (i, item) in args.iter().enumerate() {
+    for (_i, item) in args.iter().enumerate() {
         v.push(FileInfo {
-            file_index: i,
+            //file_index: i,
             filename: item.clone(),
             lines: Vec::new(),
         });
