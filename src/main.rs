@@ -794,34 +794,41 @@ fn parse_command_line() -> Config {
         files.extend(list);
     }
 
+    let mut dir_list = Vec::new();
+    if files.is_empty() {
+        dir_list.push(".".to_owned());
+    }
+
     if matches.is_present("DIRS") {
-        let list: Vec<String> = matches
+        let mut list: Vec<String> = matches
             .values_of("DIRS")
             .unwrap()
             .map(|x| x.to_owned())
             .collect();
 
-        for d in list {
-            println!("scanning {}", d);
+        dir_list.append(&mut list);
+    }
 
-            for entry in WalkDir::new(d) {
-                let entry = entry.unwrap();
+    for d in dir_list {
+        println!("scanning {}", d);
 
-                if entry.path_is_symlink() {
-                    //println!("ignore symlink {}", entry.path().display());
-                    continue;
-                }
+        for entry in WalkDir::new(d) {
+            let entry = entry.unwrap();
 
-                if entry.metadata().unwrap().is_dir() {
-                    //println!("ignore subdir {}", entry.path().display());
-                    continue;
-                }
-
-                let path = entry.into_path();
-                files.push(path.as_os_str().to_str().unwrap().to_owned());
-
-                //                println!("{}", entry.path().display());
+            if entry.path_is_symlink() {
+                //println!("ignore symlink {}", entry.path().display());
+                continue;
             }
+
+            if entry.metadata().unwrap().is_dir() {
+                //println!("ignore subdir {}", entry.path().display());
+                continue;
+            }
+
+            let path = entry.into_path();
+            files.push(path.as_os_str().to_str().unwrap().to_owned());
+
+            //                println!("{}", entry.path().display());
         }
     }
 
