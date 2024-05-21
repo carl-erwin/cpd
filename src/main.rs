@@ -814,18 +814,18 @@ fn parse_command_line() -> Config {
 
         for entry in WalkDir::new(d) {
             let entry = entry.unwrap();
+            let path = entry.path();
 
-            if entry.path_is_symlink() {
-                //println!("ignore symlink {}", entry.path().display());
+            if path.is_dir() {
+                // println!("ignore dir {}", path.display());
                 continue;
             }
 
-            if entry.metadata().unwrap().is_dir() {
-                //println!("ignore subdir {}", entry.path().display());
+            if path.is_symlink() {
+                //println!("ignore symlink {}", path.display());
                 continue;
             }
 
-            let path = entry.into_path();
             files.push(path.as_os_str().to_str().unwrap().to_owned());
 
             //                println!("{}", entry.path().display());
