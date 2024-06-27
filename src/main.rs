@@ -286,6 +286,10 @@ fn print_file_lines(filename: &str, start_line: usize, end_line: usize) {
     }
 }
 
+
+// TODO:(ceg) find a way to merge hash maps
+// to avoid memory explosion
+
 /// This (recursive) function compares the consecutive crcs to detect the cut/paste code.
 /// for a given starting crc there is a list/array of (file_index,line_index) tuples.
 /// We check all (file_index, line_index + 1).
@@ -298,7 +302,7 @@ fn walk_graph(
     window_size: WindowSize,
     depth: CallDepth,
     files_inf: &[FileInfo],
-    hash_graph: &HashMap<CpdHash, HashSet<(u32, u32)>>,
+    hash_graph: &Arc<Vec<Arc<RwLock<CpdMap>>>>,
     current_lines: &mut Vec<(CpdHash, FileIndex, LineIndex)>,
 ) {
     let mut window_size = window_size;
@@ -334,8 +338,8 @@ fn walk_graph(
             let next_hash = finfo.lines[next_li].hash;
 
             // TODO(ceg): wallk-through all sub graph
-            //for hash_graph in 0..sub_graphs.iter()
-            {
+            for hash_graph in hash_graph.iter() {
+                let hash_graph = hash_graph.read().unwrap();
                 if let Some(lines) = hash_graph.get(&next_hash) {
                     if lines.len() > 1 {
                         // at least 2 lines
@@ -602,32 +606,40 @@ fn parse_graph(
                     return;
                 }
 
+                let mut current_lines_set: HashSet<(CpdHash, FileIndex, LineIndex)> =
+                    HashSet::new();
+
+                let files_inf = files_inf.read().unwrap();
+                let hash_vec = hash_vec.read().unwrap();
+                let hash = hash_vec[i];
+
+                // get all (file,line_indexes) that match hash
                 for hash_graph in hash_graph.iter() {
                     let hash_graph = hash_graph.read().unwrap();
-                    let hash_vec = hash_vec.read().unwrap();
-                    let files_inf = files_inf.read().unwrap();
-                    let hash = hash_vec[i];
-
-                    // get all (file,line_indexes) that match hash
                     if let Some(hash_set) = hash_graph.get(&hash) {
-                        let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
-
                         // eprintln!("hash 0x{:x} {{", hash);
                         for set in hash_set.iter() {
-                            current_lines.push((hash, set.0, set.1));
+                            current_lines_set.insert((hash, set.0, set.1));
                         }
-
-                        walk_graph(
-                            &results,
-                            min_window_size,
-                            WindowSize(0),
-                            CallDepth(1),
-                            &files_inf,
-                            &hash_graph,
-                            &mut current_lines,
-                        );
                     }
                 }
+
+                // HashSet -> Vec
+                let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
+                current_lines.extend(current_lines_set.iter());
+                current_lines_set.clear();
+
+                println!("current_lines len = {}", current_lines.len());
+
+                walk_graph(
+                    &results,
+                    min_window_size,
+                    WindowSize(0),
+                    CallDepth(1),
+                    &files_inf,
+                    &hash_graph,
+                    &mut current_lines,
+                );
             })
             .unwrap();
         handles.push(handle);
