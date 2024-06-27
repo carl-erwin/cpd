@@ -27,6 +27,29 @@
 // This is a simple text "parser" that looks for "almost" common ranges of lines.
 // It only support ascii/utf8 files.
 
+/*
+
+  get all file_index, line_index for a given hash
+
+  Key=<line_hash>  -> Set<(file_index, line_index)>
+
+  for each elm in S
+
+
+
+  File_Info = &file_info[file_index]
+
+  File_Info.lines[line_index] -> (line_num, line_hash)
+
+
+    elm.file_index, elm.line_index+1 (?)
+
+
+
+
+
+*/
+
 extern crate clap;
 extern crate crc;
 extern crate num_cpus;
@@ -92,7 +115,6 @@ impl LineInfo {
 
 #[derive(Debug)]
 struct FileInfo {
-    //file_index: usize,
     filename: String,
     lines: Vec<LineInfo>,
 }
@@ -114,14 +136,10 @@ impl CpdResults {
 /// This function computes a 64 bits crc for each file's line.
 /// It will ignore empty lines and some blank characters (' ', '\t', '\n').
 /// Each crc serves as a key in a shared map to store a (file_index, line_index) tuple.
-/// The (file_index, line_index) tuple is stored in a hash set and then in the hash set is stored in the global map.
+/// The (file_index, line_index) tuple is stored in a HashSet and then in the hash set is stored in the global map.
 ///
-/// Summary: hashmap[crc] -> hashset<(file_index, line_index)>
-fn parse_file(
-    filename: &str,
-    file_index: usize,
-    map: &RwLock<CpdMap>,
-) -> Option<Vec<LineInfo>> {
+/// Summary: hashmap[crc] -> HashSet<(file_index, line_index)>
+fn parse_file(filename: &str, file_index: usize, map: &RwLock<CpdMap>) -> Option<Vec<LineInfo>> {
     let file = File::open(filename);
     let file = match file {
         Ok(file) => file,
@@ -175,7 +193,7 @@ fn parse_file(
         let line_index = line_info.len() as LineIndex;
         line_info.push(LineInfo::new(line_number + 1, hash));
 
-        // insert (file_index , line_index) pair in global table
+        // map[hash] += HashSetEntry<(file_index, line_index)>
         map.entry(hash)
             .or_insert_with(HashSet::new)
             .insert((file_index, line_index));
@@ -190,9 +208,7 @@ fn parse_files(
     n_jobs: usize,
     file_max: usize,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
-) -> (Vec<CpdHash>, Arc<RwLock<CpdMap>>) {
-    let hash_graph = Arc::new(RwLock::new(CpdMap::new()));
-
+) -> (Vec<CpdHash>, Vec<Arc<RwLock<CpdMap>>>) {
     let mut thread_map = Vec::with_capacity(n_jobs);
 
     for _ in 0..n_jobs {
@@ -206,7 +222,7 @@ fn parse_files(
         let files_inf = Arc::clone(&files_inf);
         let idx = Arc::clone(&idx);
 
-        let local_graph = Arc::clone(&thread_map[job_idx]);
+        let sub_graph = Arc::clone(&thread_map[job_idx]);
 
         let handle = thread::spawn(move || loop {
             let i = idx.fetch_add(1, Ordering::SeqCst);
@@ -221,7 +237,7 @@ fn parse_files(
 
             eprint!("\rparse files : {}/{}               ", i + 1, file_max);
 
-            if let Some(lines) = parse_file(&filename, i, &local_graph) {
+            if let Some(lines) = parse_file(&filename, i, &sub_graph) {
                 let mut vec = files_inf.write().unwrap();
                 vec[i].lines = lines;
             }
@@ -235,33 +251,19 @@ fn parse_files(
 
     eprint!("\r\nmerge subgraphs");
 
-    for map in thread_map {
-        let mut map = map.write().unwrap();
+    // TODO: avoid merge
 
-        for (k, v) in map.iter() {
-            let mut gmap = hash_graph.write().unwrap();
+    let mut hash_vec = Vec::<CpdHash>::new();
 
-            let hset = gmap.entry(*k).or_insert_with(HashSet::new);
-
-            for (file_index, line_index) in v {
-                hset.insert((*file_index, *line_index));
-            }
-        }
-
-        map.clear();
-        map.shrink_to_fit();
+    // keys to vec
+    for map in thread_map.iter() {
+        let hash_graph = map.read().unwrap();
+        hash_vec.extend((*hash_graph).keys());
     }
 
     eprintln!("");
 
-    // keys to vec
-    let mut hash_vec = Vec::<CpdHash>::new();
-    {
-        let hash_graph = hash_graph.read().unwrap();
-        hash_vec.extend((*hash_graph).keys());
-    }
-
-    (hash_vec, hash_graph)
+    (hash_vec, thread_map)
 }
 
 /// This function prints a specific range of line, for a given file
@@ -288,7 +290,7 @@ fn print_file_lines(filename: &str, start_line: usize, end_line: usize) {
     }
 }
 
-/// This (recursive) function compares the consecutives crcs to detect the cut/paste code.
+/// This (recursive) function compares the consecutive crcs to detect the cut/paste code.
 /// for a given starting crc there is a list/array of (file_index,line_index) tuples.
 /// We check all (file_index, line_index + 1).
 /// If they all point to the same crc we loop  (cut/paste detected).
@@ -335,28 +337,32 @@ fn walk_graph(
             // get next line hash
             let next_hash = finfo.lines[next_li].hash;
 
-            if let Some(lines) = hash_graph.get(&next_hash) {
-                if lines.len() > 1 {
-                    // at least 2 lines
-                    next_lines.push((next_hash, e.1, next_li as u32));
+            // TODO(ceg): wallk-through all sub graph
+            //for hash_graph in 0..sub_graphs.iter()
+            {
+                if let Some(lines) = hash_graph.get(&next_hash) {
+                    if lines.len() > 1 {
+                        // at least 2 lines
+                        next_lines.push((next_hash, e.1, next_li as u32));
 
-                    // we must keep track of the next lines and build a new graph
-                    // if there are more than two hashes we will recurse
-                    sub_graph
-                        .entry(next_hash)
-                        .or_insert_with(HashSet::new)
-                        .insert((e.1, next_li as u32));
+                        // we must keep track of the next lines and build a new graph
+                        // if there are more than two hashes we will recurse
+                        sub_graph
+                            .entry(next_hash)
+                            .or_insert_with(HashSet::new)
+                            .insert((e.1, next_li as u32));
+                    } else if window_size.0 >= min_window_size && current_lines.len() > 1 {
+                        // unique line detected: must flush , restart window
+                        // restart window for this index
+                        // when new file(s) are detected must insert new window
+                        to_flush = true;
+                    }
                 } else if window_size.0 >= min_window_size && current_lines.len() > 1 {
                     // unique line detected: must flush , restart window
                     // restart window for this index
                     // when new file(s) are detected must insert new window
                     to_flush = true;
                 }
-            } else if window_size.0 >= min_window_size && current_lines.len() > 1 {
-                // unique line detected: must flush , restart window
-                // restart window for this index
-                // when new file(s) are detected must insert new window
-                to_flush = true;
             }
         }
 
@@ -488,11 +494,12 @@ fn get_first_common_line(
     }
 }
 
+/// walkthrough all hashes and rewind to find the first common hash
 fn filter_common_starting_point(
     n_jobs: usize,
     hash_vec: Vec<CpdHash>,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
-    hash_graph: &Arc<RwLock<CpdMap>>,
+    hash_graph: &Arc<Vec<Arc<RwLock<CpdMap>>>>,
 ) -> Vec<CpdHash> {
     let nr_hash = hash_vec.len();
 
@@ -528,17 +535,19 @@ fn filter_common_starting_point(
 
                 let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
 
-                let hash_graph = hash_graph.read().unwrap();
-                let hash_set = hash_graph.get(&hash);
-                for set in hash_set.unwrap().iter() {
-                    current_lines.push((hash, set.0, set.1));
+                // iter over all sub graph
+                for sub_graph in hash_graph.as_ref().iter() {
+                    let sub_graph = sub_graph.read().unwrap();
+                    let hash_set = sub_graph.get(&hash).unwrap();
+                    for e in hash_set.iter() {
+                        current_lines.push((hash, e.0, e.1));
+                    }
                 }
 
                 get_first_common_line(&files_inf, &mut current_lines);
-                // println!("hash {} -> start @ hash {}", hash, current_lines[0].0);
+
                 let hash = current_lines[0].0;
-                let mut filtered_hash = filtered_hash.write().unwrap();
-                filtered_hash.insert(hash);
+                filtered_hash.write().unwrap().insert(hash);
             })
             .unwrap();
         handles.push(handle);
@@ -558,6 +567,7 @@ fn filter_common_starting_point(
         nr_hash - filtered_hash.len()
     );
 
+    // HashSet -> Vec
     hash_vec.extend(filtered_hash.iter());
     hash_vec
 }
@@ -565,7 +575,7 @@ fn filter_common_starting_point(
 fn parse_graph(
     n_jobs: usize,
     stack_size: usize,
-    hash_graph: &Arc<RwLock<CpdMap>>,
+    hash_graph: &Arc<Vec<Arc<RwLock<CpdMap>>>>,
     hash_vec: Vec<CpdHash>,
     files_inf: &Arc<RwLock<Vec<FileInfo>>>,
     results: &Arc<RwLock<CpdResults>>,
@@ -581,7 +591,7 @@ fn parse_graph(
     for th_idx in 0..n_jobs {
         let results = Arc::clone(&results);
         let idx = Arc::clone(&idx);
-        let hash_graph = Arc::clone(hash_graph);
+        let hash_graph = Arc::clone(&hash_graph);
         let hash_vec = Arc::clone(&hash_vec);
         let files_inf = Arc::clone(files_inf);
 
@@ -595,28 +605,31 @@ fn parse_graph(
                     return;
                 }
 
-                let hash_graph = hash_graph.read().unwrap();
-                let hash_vec = hash_vec.read().unwrap();
-                let files_inf = files_inf.read().unwrap();
-                let hash = hash_vec[i];
+                for hash_graph in hash_graph.iter() {
+                    let hash_graph = hash_graph.read().unwrap();
+                    let hash_vec = hash_vec.read().unwrap();
+                    let files_inf = files_inf.read().unwrap();
+                    let hash = hash_vec[i];
 
-                let hash_set = hash_graph.get(&hash);
-                let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
+                    // get all (file,line_indexes) that match hash
+                    let hash_set = hash_graph.get(&hash);
+                    let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
 
-                // eprintln!("hash 0x{:x} {{", hash);
-                for set in hash_set.unwrap().iter() {
-                    current_lines.push((hash, set.0, set.1));
+                    // eprintln!("hash 0x{:x} {{", hash);
+                    for set in hash_set.unwrap().iter() {
+                        current_lines.push((hash, set.0, set.1));
+                    }
+
+                    walk_graph(
+                        &results,
+                        min_window_size,
+                        WindowSize(0),
+                        CallDepth(1),
+                        &files_inf,
+                        &hash_graph,
+                        &mut current_lines,
+                    );
                 }
-
-                walk_graph(
-                    &results,
-                    min_window_size,
-                    WindowSize(0),
-                    CallDepth(1),
-                    &files_inf,
-                    &hash_graph,
-                    &mut current_lines,
-                );
             })
             .unwrap();
         handles.push(handle);
@@ -905,6 +918,7 @@ fn main() {
         return;
     }
 
+    let hash_graph = Arc::new(hash_graph);
     let hash_vec =
         filter_common_starting_point(config.nr_threads, hash_vec, &files_inf, &hash_graph);
 
