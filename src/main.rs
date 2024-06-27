@@ -538,9 +538,10 @@ fn filter_common_starting_point(
                 // iter over all sub graph
                 for sub_graph in hash_graph.as_ref().iter() {
                     let sub_graph = sub_graph.read().unwrap();
-                    let hash_set = sub_graph.get(&hash).unwrap();
-                    for e in hash_set.iter() {
-                        current_lines.push((hash, e.0, e.1));
+                    if let Some(hash_set) = sub_graph.get(&hash) {
+                        for e in hash_set.iter() {
+                            current_lines.push((hash, e.0, e.1));
+                        }
                     }
                 }
 
@@ -612,23 +613,24 @@ fn parse_graph(
                     let hash = hash_vec[i];
 
                     // get all (file,line_indexes) that match hash
-                    let hash_set = hash_graph.get(&hash);
-                    let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
+                    if let Some(hash_set) = hash_graph.get(&hash) {
+                        let mut current_lines: Vec<(CpdHash, FileIndex, LineIndex)> = Vec::new();
 
-                    // eprintln!("hash 0x{:x} {{", hash);
-                    for set in hash_set.unwrap().iter() {
-                        current_lines.push((hash, set.0, set.1));
+                        // eprintln!("hash 0x{:x} {{", hash);
+                        for set in hash_set.iter() {
+                            current_lines.push((hash, set.0, set.1));
+                        }
+
+                        walk_graph(
+                            &results,
+                            min_window_size,
+                            WindowSize(0),
+                            CallDepth(1),
+                            &files_inf,
+                            &hash_graph,
+                            &mut current_lines,
+                        );
                     }
-
-                    walk_graph(
-                        &results,
-                        min_window_size,
-                        WindowSize(0),
-                        CallDepth(1),
-                        &files_inf,
-                        &hash_graph,
-                        &mut current_lines,
-                    );
                 }
             })
             .unwrap();
