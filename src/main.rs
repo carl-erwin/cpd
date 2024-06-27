@@ -249,10 +249,6 @@ fn parse_files(
         handle.join().unwrap();
     }
 
-    eprint!("\r\nmerge subgraphs");
-
-    // TODO: avoid merge
-
     let mut hash_vec = Vec::<CpdHash>::new();
 
     // keys to vec
